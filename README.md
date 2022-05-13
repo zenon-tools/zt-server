@@ -1,6 +1,6 @@
 # Zenon Tools Server
 
-The backend server for https://zenon.tools
+The API server for https://zenon.tools
 
 ## Building from source
 The Dart SDK is required to build the server from source (https://dart.dev/get-dart).
