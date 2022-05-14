@@ -21,3 +21,4 @@ Make a copy of the example.config.yaml file and name the copy "config.yaml". Set
 cd bin
 dart run server
 ```
+With the default configuration the server is now running on http://localhost:8080
