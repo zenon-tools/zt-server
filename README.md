@@ -18,7 +18,6 @@ Make a copy of the example.config.yaml file and name the copy "config.yaml". Set
 
 ## Running the server
 ```
-cd bin
-dart run server
+dart run bin/server
 ```
 With the default configuration the server is now running on http://localhost:8080
