@@ -1,0 +1,10 @@
+name: zt_server
+
+environment:
+  sdk: ">=2.12.0 <3.0.0"
+
+dependencies:
+  shelf: ^1.2.0
+  shelf_router: ^1.1.2
+  postgresql2: ^1.0.2
+  settings_yaml: ^3.4.0

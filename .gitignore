@@ -1,0 +1,7 @@
+# https://dart.dev/guides/libraries/private-files
+.dart_tool/
+.vscode/
+.packages
+data_store/
+pubspec.lock
+config.yaml
