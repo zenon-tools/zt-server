@@ -22,39 +22,12 @@ class Api {
       ..get('/pcs-pool', _pcsPoolHandler)
       ..get('/pillars', _pillarsHandler)
       ..get('/pillars-off-chain', _pillarsOffChainHandler)
-      ..get('/portfolio', _portfolioHandler);
+      ..get('/portfolio', _portfolioHandler)
+      ..get('/votes', _votesHandler);
 
     router.all('/<ignored|.*>', (Request request) => Response.notFound('null'));
 
     return router;
-  }
-
-  Future<Response> _portfolioHandler(Request request) async {
-    final address = request.url.queryParameters['address'] ?? '';
-
-    if (address.length != 40) {
-      return Response.internalServerError();
-    }
-
-    final futures = await Future.wait([
-      DatabaseService().getStakes(address),
-      DatabaseService().getDelegation(address),
-      DatabaseService().getSentinel(address),
-      DatabaseService().getPillar(address),
-      DatabaseService().getBalances(address),
-    ]);
-
-    return Response.ok(
-      Utils.toJson({
-        'address': address,
-        'stakes': futures[0],
-        'delegation': futures[1],
-        'sentinel': futures[2],
-        'pillar': futures[3],
-        'balances': futures[4]
-      }),
-      headers: headers,
-    );
   }
 
   Future<Response> _momentumHeightHandler(Request request) async {
@@ -98,6 +71,49 @@ class Api {
         .readAsStringSync();
     return Response.ok(
       data,
+      headers: headers,
+    );
+  }
+
+  Future<Response> _portfolioHandler(Request request) async {
+    final address = request.url.queryParameters['address'] ?? '';
+
+    if (address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final futures = await Future.wait([
+      DatabaseService().getStakes(address),
+      DatabaseService().getDelegation(address),
+      DatabaseService().getSentinel(address),
+      DatabaseService().getPillar(address),
+      DatabaseService().getBalances(address),
+    ]);
+
+    return Response.ok(
+      Utils.toJson({
+        'address': address,
+        'stakes': futures[0],
+        'delegation': futures[1],
+        'sentinel': futures[2],
+        'pillar': futures[3],
+        'balances': futures[4]
+      }),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _votesHandler(Request request) async {
+    final pillar = request.url.queryParameters['pillar'] ?? '';
+
+    if (pillar.length == 0 || pillar.length > 30) {
+      return Response.internalServerError();
+    }
+
+    final votes = await DatabaseService().getVotesByPillar(pillar);
+
+    return Response.ok(
+      Utils.toJson(votes),
       headers: headers,
     );
   }

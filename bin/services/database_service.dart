@@ -11,6 +11,7 @@ class Table {
   static String get sentinels => 'Sentinels';
   static String get tokens => 'Tokens';
   static String get projects => 'Projects';
+  static String get projectPhases => 'ProjectPhases';
   static String get votes => 'Votes';
 }
 
@@ -38,7 +39,9 @@ class DatabaseService {
   }
 
   Future<int> getLatestHeight() async {
-    List r = await _conn.query('SELECT MAX(height) FROM momentums').toList();
+    List r = await _conn
+        .query('SELECT MAX(height) FROM ${Table.momentums}')
+        .toList();
     return r.isNotEmpty && r[0][0] != null ? r[0][0] : 0;
   }
 
@@ -68,7 +71,7 @@ class DatabaseService {
   Future<dynamic> getDelegation(String address) async {
     List r = await _conn.query(
         '''SELECT T2.name, T1.delegationStartTimestamp, T3.balance
-            FROM ${Table.accounts} T1, pillars T2, balances T3
+            FROM ${Table.accounts} T1, ${Table.pillars} T2, ${Table.balances} T3
             WHERE T1.address = @address
 	          and T2.ownerAddress = T1.delegate
 	          and T3.tokenStandard = @tokenStandard
@@ -93,7 +96,7 @@ class DatabaseService {
   Future<dynamic> getSentinel(String address) async {
     List r = await _conn
         .query('''SELECT T1.registrationTimestamp, T1.isRevocable, T1.active
-            FROM sentinels T1
+            FROM ${Table.sentinels} T1
             WHERE T1.owner = @address
             LIMIT 1''', {'address': address}).toList();
     if (r.isNotEmpty && (r[0] as Row).toList().length == 3) {
@@ -149,5 +152,38 @@ class DatabaseService {
       }
     }
     return balances;
+  }
+
+  Future<dynamic> getVotesByPillar(String pillar) async {
+    List r = await _conn.query(
+        '''SELECT T1.momentumHash, T1.momentumTimestamp, T2.url, T2.name, T3.name, T1.vote
+            FROM ${Table.votes} T1
+            LEFT JOIN ${Table.projects} T2
+                ON T2.id = T1.projectId
+            LEFT JOIN ${Table.projectPhases} T3
+                ON T3.id = T1.phaseId
+            INNER JOIN ${Table.pillars} T4
+	              ON T4.name = @pillar
+            WHERE voterAddress = T4.ownerAddress
+            ORDER BY T1.id DESC LIMIT 1000
+            OFFSET (@page - 1) * 10''',
+        {'pillar': pillar, 'page': 1}).toList();
+
+    List votes = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 6 && row[3] != null) {
+          votes.add({
+            'momentumHash': row[0],
+            'momentumTimestamp': row[1],
+            'projectUrl': row[2],
+            'projectName': row[3],
+            'phaseName': row[4] ?? '',
+            'vote': row[5],
+          });
+        }
+      }
+    }
+    return votes;
   }
 }
