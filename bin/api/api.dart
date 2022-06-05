@@ -23,7 +23,8 @@ class Api {
       ..get('/pillars', _pillarsHandler)
       ..get('/pillars-off-chain', _pillarsOffChainHandler)
       ..get('/portfolio', _portfolioHandler)
-      ..get('/votes', _votesHandler);
+      ..get('/votes', _votesHandler)
+      ..get('/projects', _projectsHandler);
 
     router.all('/<ignored|.*>', (Request request) => Response.notFound('null'));
 
@@ -114,6 +115,21 @@ class Api {
 
     return Response.ok(
       Utils.toJson(votes),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _projectsHandler(Request request) async {
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+
+    if (page <= 0 || page > 100) {
+      return Response.internalServerError();
+    }
+
+    final proposals = await DatabaseService().getAzProjects(page);
+
+    return Response.ok(
+      Utils.toJson(proposals),
       headers: headers,
     );
   }

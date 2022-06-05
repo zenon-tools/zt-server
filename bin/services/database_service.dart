@@ -166,8 +166,7 @@ class DatabaseService {
 	              ON T4.name = @pillar
             WHERE voterAddress = T4.ownerAddress
             ORDER BY T1.id DESC LIMIT 1000
-            OFFSET (@page - 1) * 10''',
-        {'pillar': pillar, 'page': 1}).toList();
+            OFFSET (@page - 1) * 10''', {'pillar': pillar, 'page': 1}).toList();
 
     List votes = [];
     if (r.isNotEmpty) {
@@ -185,5 +184,40 @@ class DatabaseService {
       }
     }
     return votes;
+  }
+
+  Future<dynamic> getAzProjects(int page) async {
+    List r = await _conn.query(
+        '''SELECT T1.name, '' as phaseName, T1.id as projectId, T1.creationTimestamp, T1.url, T1.status, T1.yesVotes, T1.noVotes, T1.totalVotes, T1.znnFundsNeeded, T1.qsrFundsNeeded
+            FROM ${Table.projects} T1
+            UNION ALL
+            SELECT T3.name, T2.name, T2.projectId, T2.creationTimestamp, T2.url, T2.status, T2.yesVotes, T2.noVotes, T2.totalVotes, T2.znnFundsNeeded, T2.qsrFundsNeeded
+            FROM ${Table.projectPhases} T2
+            INNER JOIN ${Table.projects} T3
+	            ON projectId = T3.id
+            ORDER BY creationTimestamp DESC LIMIT 10
+            OFFSET (@page - 1) * 10''', {'page': page}).toList();
+
+    List proposals = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 11) {
+          proposals.add({
+            'projectName': row[0],
+            'phaseName': row[1],
+            'projectId': row[2],
+            'creationTimestamp': row[3],
+            'url': row[4],
+            'status': row[5],
+            'yesVotes': row[6],
+            'noVotes': row[7],
+            'totalVotes': row[8],
+            'znnFundsNeeded': row[9],
+            'qsrFundsNeeded': row[10]
+          });
+        }
+      }
+    }
+    return proposals;
   }
 }
