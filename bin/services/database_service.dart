@@ -156,7 +156,7 @@ class DatabaseService {
 
   Future<dynamic> getVotesByPillar(String pillar) async {
     List r = await _conn.query(
-        '''SELECT T1.momentumHash, T1.momentumTimestamp, T2.url, T2.name, T3.name, T1.vote
+        '''SELECT T1.momentumHash, T1.momentumTimestamp, T2.url, T2.name, T3.name, T1.vote, T1.projectId
             FROM ${Table.votes} T1
             LEFT JOIN ${Table.projects} T2
                 ON T2.id = T1.projectId
@@ -171,7 +171,7 @@ class DatabaseService {
     List votes = [];
     if (r.isNotEmpty) {
       for (final Row row in r) {
-        if (row.toList().length == 6 && row[3] != null) {
+        if (row.toList().length == 7 && row[3] != null) {
           votes.add({
             'momentumHash': row[0],
             'momentumTimestamp': row[1],
@@ -179,6 +179,7 @@ class DatabaseService {
             'projectName': row[3],
             'phaseName': row[4] ?? '',
             'vote': row[5],
+            'projectId': row[6],
           });
         }
       }
@@ -219,5 +220,112 @@ class DatabaseService {
       }
     }
     return proposals;
+  }
+
+  Future<dynamic> getAzProjectById(String projectId) async {
+    List r = await _conn.query(
+        '''SELECT id, owner, name, description, url, znnFundsNeeded, qsrFundsNeeded, creationTimestamp, lastUpdateTimestamp, status, yesVotes, noVotes, totalVotes
+           FROM ${Table.projects}
+           WHERE id = @projectId
+           ''', {'projectId': projectId}).toList();
+
+    if (r.isNotEmpty) {
+      Row row = r[0];
+      return {
+        'projectId': row[0],
+        'owner': row[1],
+        'name': row[2],
+        'description': row[3],
+        'url': row[4],
+        'znnFundsNeeded': row[5],
+        'qsrFundsNeeded': row[6],
+        'creationTimestamp': row[7],
+        'lastUpdateTimestamp': row[8],
+        'status': row[9],
+        'yesVotes': row[10],
+        'noVotes': row[11],
+        'totalVotes': row[12]
+      };
+    } else {
+      return {};
+    }
+  }
+
+  Future<dynamic> getAzPhasesByProjectId(String projectId) async {
+    List r = await _conn.query(
+        '''SELECT id, name, description, url, znnFundsNeeded, qsrFundsNeeded, creationTimestamp, status, yesVotes, noVotes, totalVotes
+           FROM ${Table.projectPhases}
+           WHERE projectId = @projectId
+           ''', {'projectId': projectId}).toList();
+
+    List phases = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        phases.add({
+          'phaseId': row[0],
+          'name': row[1],
+          'description': row[2],
+          'url': row[3],
+          'znnFundsNeeded': row[4],
+          'qsrFundsNeeded': row[5],
+          'creationTimestamp': row[6],
+          'status': row[7],
+          'yesVotes': row[8],
+          'noVotes': row[9],
+          'totalVotes': row[10]
+        });
+      }
+    }
+    return phases;
+  }
+
+  Future<dynamic> getAzVotesForProjectById(String projectId) async {
+    List r = await _conn.query(
+        '''SELECT DISTINCT ON (T2.name) T2.name, T1.vote, T1.momentumTimestamp
+           FROM ${Table.votes} T1
+           INNER JOIN ${Table.pillars} T2
+	             ON T2.ownerAddress = T1.voterAddress
+           WHERE T1.projectId = @projectId AND T1.phaseId = ''
+           ORDER BY T2.name, T1.id DESC
+           ''', {'projectId': projectId}).toList();
+
+    List votes = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 3) {
+          votes.add({
+            'pillarName': row[0],
+            'vote': row[1],
+            'momentumTimestamp': row[2]
+          });
+        }
+      }
+    }
+    return votes;
+  }
+
+  Future<dynamic> getAzVotesForPhaseByProjectId(String projectId) async {
+    List r = await _conn.query(
+        '''SELECT DISTINCT ON (T2.name) T2.name, T1.vote, T1.momentumTimestamp
+           FROM ${Table.votes} T1
+           INNER JOIN ${Table.pillars} T2
+	             ON T2.ownerAddress = T1.voterAddress
+           WHERE T1.projectId = @projectId AND T1.phaseId = '' IS FALSE
+           ORDER BY T2.name, T1.id DESC
+           ''', {'projectId': projectId}).toList();
+
+    List votes = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 3) {
+          votes.add({
+            'pillarName': row[0],
+            'vote': row[1],
+            'momentumTimestamp': row[2]
+          });
+        }
+      }
+    }
+    return votes;
   }
 }

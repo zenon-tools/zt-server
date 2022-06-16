@@ -24,7 +24,10 @@ class Api {
       ..get('/pillars-off-chain', _pillarsOffChainHandler)
       ..get('/portfolio', _portfolioHandler)
       ..get('/votes', _votesHandler)
-      ..get('/projects', _projectsHandler);
+      ..get('/projects', _projectsHandler)
+      ..get('/project', _projectHandler)
+      ..get('/project-votes', _projectVotesHandler)
+      ..get('/phase-votes', _phaseVotesHandler);
 
     router.all('/<ignored|.*>', (Request request) => Response.notFound('null'));
 
@@ -130,6 +133,51 @@ class Api {
 
     return Response.ok(
       Utils.toJson(proposals),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _projectHandler(Request request) async {
+    final id = request.url.queryParameters['projectId'] ?? '';
+
+    if (id.isEmpty || id.length > 100) {
+      return Response.internalServerError();
+    }
+
+    final project = await DatabaseService().getAzProjectById(id);
+    final phases = await DatabaseService().getAzPhasesByProjectId(id);
+    project['phases'] = phases;
+
+    return Response.ok(
+      Utils.toJson(project),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _projectVotesHandler(Request request) async {
+    final id = request.url.queryParameters['projectId'] ?? '';
+
+    if (id.isEmpty || id.length > 100) {
+      return Response.internalServerError();
+    }
+
+    final votes = await DatabaseService().getAzVotesForProjectById(id);
+    return Response.ok(
+      Utils.toJson(votes),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _phaseVotesHandler(Request request) async {
+    final id = request.url.queryParameters['projectId'] ?? '';
+
+    if (id.isEmpty || id.length > 100) {
+      return Response.internalServerError();
+    }
+
+    final votes = await DatabaseService().getAzVotesForPhaseByProjectId(id);
+    return Response.ok(
+      Utils.toJson(votes),
       headers: headers,
     );
   }
