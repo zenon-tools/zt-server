@@ -154,7 +154,7 @@ class DatabaseService {
     return balances;
   }
 
-  Future<dynamic> getVotesByPillar(String pillar) async {
+  Future<dynamic> getVotesByPillar(String pillar, int page) async {
     List r = await _conn.query(
         '''SELECT T1.momentumHash, T1.momentumTimestamp, T2.url, T2.name, T3.name, T1.vote, T1.projectId
             FROM ${Table.votes} T1
@@ -166,7 +166,8 @@ class DatabaseService {
 	              ON T4.name = @pillar
             WHERE voterAddress = T4.ownerAddress
             ORDER BY T1.id DESC LIMIT 1000
-            OFFSET (@page - 1) * 10''', {'pillar': pillar, 'page': 1}).toList();
+            OFFSET (@page - 1) * 10''',
+        {'pillar': pillar, 'page': page}).toList();
 
     List votes = [];
     if (r.isNotEmpty) {
@@ -304,15 +305,15 @@ class DatabaseService {
     return votes;
   }
 
-  Future<dynamic> getAzVotesForPhaseByProjectId(String projectId) async {
+  Future<dynamic> getAzVotesForPhaseById(String phaseId) async {
     List r = await _conn.query(
         '''SELECT DISTINCT ON (T2.name) T2.name, T1.vote, T1.momentumTimestamp
            FROM ${Table.votes} T1
            INNER JOIN ${Table.pillars} T2
 	             ON T2.ownerAddress = T1.voterAddress
-           WHERE T1.projectId = @projectId AND T1.phaseId = '' IS FALSE
+           WHERE T1.phaseId = @phaseId
            ORDER BY T2.name, T1.id DESC
-           ''', {'projectId': projectId}).toList();
+           ''', {'phaseId': phaseId}).toList();
 
     List votes = [];
     if (r.isNotEmpty) {
@@ -327,5 +328,31 @@ class DatabaseService {
       }
     }
     return votes;
+  }
+
+  Future<dynamic> getPillarUpdateEvents(String pillar) async {
+    List r = await _conn.query(
+        '''SELECT T1.momentumheight, T1.momentumtimestamp, (T1.input::json->>'giveBlockRewardPercentage')::int as giveBlockRewardPercentage, (T1.input::json->>'giveDelegateRewardPercentage')::int as giveDelegateRewardPercentage
+           FROM ${Table.accountBlocks} T1
+           INNER JOIN ${Table.pillars} T2
+	             ON T1.input::json->>'name' = T2.name and T2.name = @pillar
+           WHERE method = 'UpdatePillar'
+           ORDER BY T1.momentumheight ASC LIMIT 500
+           ''', {'pillar': pillar}).toList();
+
+    List events = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 4) {
+          events.add({
+            'momentumHeight': row[0],
+            'momentumTimestamp': row[1],
+            'giveBlockRewardPercentage': row[2],
+            'giveDelegateRewardPercentage': row[3]
+          });
+        }
+      }
+    }
+    return events;
   }
 }

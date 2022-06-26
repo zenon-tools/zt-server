@@ -27,7 +27,8 @@ class Api {
       ..get('/projects', _projectsHandler)
       ..get('/project', _projectHandler)
       ..get('/project-votes', _projectVotesHandler)
-      ..get('/phase-votes', _phaseVotesHandler);
+      ..get('/phase-votes', _phaseVotesHandler)
+      ..get('/reward-share-history', _rewardShareHistoryHandler);
 
     router.all('/<ignored|.*>', (Request request) => Response.notFound('null'));
 
@@ -109,12 +110,13 @@ class Api {
 
   Future<Response> _votesHandler(Request request) async {
     final pillar = request.url.queryParameters['pillar'] ?? '';
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
 
-    if (pillar.length == 0 || pillar.length > 30) {
+    if (pillar.length == 0 || pillar.length > 30 || page <= 0 || page > 100) {
       return Response.internalServerError();
     }
 
-    final votes = await DatabaseService().getVotesByPillar(pillar);
+    final votes = await DatabaseService().getVotesByPillar(pillar, page);
 
     return Response.ok(
       Utils.toJson(votes),
@@ -169,15 +171,42 @@ class Api {
   }
 
   Future<Response> _phaseVotesHandler(Request request) async {
-    final id = request.url.queryParameters['projectId'] ?? '';
+    final id = request.url.queryParameters['phaseId'] ?? '';
 
     if (id.isEmpty || id.length > 100) {
       return Response.internalServerError();
     }
 
-    final votes = await DatabaseService().getAzVotesForPhaseByProjectId(id);
+    final votes = await DatabaseService().getAzVotesForPhaseById(id);
     return Response.ok(
       Utils.toJson(votes),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _rewardShareHistoryHandler(Request request) async {
+    final pillar = request.url.queryParameters['pillar'] ?? '';
+
+    if (pillar.isEmpty || pillar.length > 100) {
+      return Response.internalServerError();
+    }
+
+    final List events = await DatabaseService().getPillarUpdateEvents(pillar);
+
+    final rewardShareEvents = [];
+    var previousEvent;
+    for (final event in events) {
+      if (previousEvent == null ||
+          previousEvent['giveBlockRewardPercentage'] !=
+              event['giveBlockRewardPercentage'] ||
+          previousEvent['giveDelegateRewardPercentage'] !=
+              event['giveDelegateRewardPercentage']) {
+        rewardShareEvents.add(event);
+      }
+      previousEvent = event;
+    }
+    return Response.ok(
+      Utils.toJson(rewardShareEvents.reversed.toList()),
       headers: headers,
     );
   }
