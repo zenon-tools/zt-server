@@ -115,7 +115,7 @@ class DatabaseService {
     List r = await _conn.query(
         '''SELECT T1.name, T1.spawnTimestamp, T1.slotCostQsr, T1.isRevocable, T1.revokeCooldown, T1.revokeTimestamp
             FROM ${Table.pillars} T1
-            WHERE T1.ownerAddress = @address
+            WHERE T1.ownerAddress = @address and T1.isRevoked = false
             LIMIT 1''', {'address': address}).toList();
     if (r.isNotEmpty && (r[0] as Row).toList().length == 6) {
       final row = r[0];
@@ -165,8 +165,8 @@ class DatabaseService {
             INNER JOIN ${Table.pillars} T4
 	              ON T4.name = @pillar
             WHERE voterAddress = T4.ownerAddress
-            ORDER BY T1.id DESC LIMIT 1000
-            OFFSET (@page - 1) * 10''',
+            ORDER BY T1.id DESC LIMIT 5
+            OFFSET (@page - 1) * 5''',
         {'pillar': pillar, 'page': page}).toList();
 
     List votes = [];
@@ -354,5 +354,69 @@ class DatabaseService {
       }
     }
     return events;
+  }
+
+  Future<dynamic> getPillarDelegators(String pillar) async {
+    List r = await _conn
+        .query('''SELECT T1.address, T1.delegationStartTimestamp, T2.balance
+            FROM ${Table.accounts} T1
+            INNER JOIN ${Table.balances} T2
+	              ON T1.address = T2.address
+            INNER JOIN pillars T3
+                ON T3.name = @pillar
+            WHERE T1.delegate = T3.ownerAddress and T2.tokenStandard = 'zts1znnxxxxxxxxxxxxx9z4ulx' and T2.balance >= 100000000
+            ORDER BY T2.balance DESC LIMIT 1000
+           ''', {'pillar': pillar}).toList();
+
+    List delegators = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 3) {
+          delegators.add({
+            'address': row[0],
+            'delegationStartTimestamp': row[1],
+            'delegationAmount': row[2]
+          });
+        }
+      }
+    }
+    return delegators;
+  }
+
+  Future<dynamic> getPillarProfile(String pillar) async {
+    List r = await _conn.query(
+        '''SELECT ownerAddress, producerAddress, withdrawAddress, spawnTimestamp, slotCostQsr, votingActivity
+            FROM ${Table.pillars}
+            WHERE name = @pillar and isRevoked = false
+            LIMIT 1
+           ''', {'pillar': pillar}).toList();
+
+    if (r.isNotEmpty) {
+      Row row = r[0];
+      return {
+        'ownerAddress': row[0],
+        'producerAddress': row[1],
+        'withdrawAddress': row[2],
+        'spawnTimestamp': row[3],
+        'slotCostQsr': row[4],
+        'votingActivity': row[5]
+      };
+    } else {
+      return {};
+    }
+  }
+
+  Future<dynamic> getPublicKeyByAddress(String address) async {
+    List r = await _conn.query('''SELECT publicKey
+            FROM ${Table.accounts}
+            WHERE address = @address
+            LIMIT 1
+           ''', {'address': address}).toList();
+
+    if (r.isNotEmpty) {
+      return r[0][0];
+    } else {
+      return '';
+    }
   }
 }

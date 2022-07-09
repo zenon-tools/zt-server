@@ -6,6 +6,7 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'api/api.dart';
 import 'config/config.dart';
 import 'services/database_service.dart';
+import 'package:shelf_cors_headers/shelf_cors_headers.dart';
 
 Future main() async {
   Config.load();
@@ -13,7 +14,7 @@ Future main() async {
   await DatabaseService().init();
 
   final server = await shelf_io.serve(
-    logRequests().addHandler(Api().router),
+    logRequests().addMiddleware(corsHeaders()).addHandler(Api().router),
     InternetAddress.anyIPv4,
     Config.serverPort,
   );

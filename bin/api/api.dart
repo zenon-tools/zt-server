@@ -1,16 +1,30 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:hex/hex.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
+import 'package:znn_sdk_dart/znn_sdk_dart.dart';
 
 import '../config/config.dart';
 import '../services/database_service.dart';
 import '../utils/utils.dart';
 
+extension ContainsKeys on Map {
+  bool containsKeys(List<String> keys) {
+    for (final key in keys) {
+      if (!this.containsKey(key)) {
+        return false;
+      }
+    }
+    return true;
+  }
+}
+
 class Api {
   final headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST',
+    'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
     'Access-Control-Allow-Headers': 'Origin, Content-Type',
     'Content-Type': 'application/json'
   };
@@ -28,7 +42,10 @@ class Api {
       ..get('/project', _projectHandler)
       ..get('/project-votes', _projectVotesHandler)
       ..get('/phase-votes', _phaseVotesHandler)
-      ..get('/reward-share-history', _rewardShareHistoryHandler);
+      ..get('/reward-share-history', _rewardShareHistoryHandler)
+      ..get('/pillar-delegators', _pillarDelegatorsHandler)
+      ..get('/pillar-profile', _pillarProfileHandler)
+      ..put('/pillar-off-chain', _pillarOffChainHandler);
 
     router.all('/<ignored|.*>', (Request request) => Response.notFound('null'));
 
@@ -210,4 +227,147 @@ class Api {
       headers: headers,
     );
   }
+
+  Future<Response> _pillarDelegatorsHandler(Request request) async {
+    final pillar = request.url.queryParameters['pillar'] ?? '';
+
+    if (pillar.length == 0 || pillar.length > 50) {
+      return Response.internalServerError();
+    }
+
+    final delegators = await DatabaseService().getPillarDelegators(pillar);
+    return Response.ok(
+      Utils.toJson(delegators),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _pillarProfileHandler(Request request) async {
+    final pillar = request.url.queryParameters['pillar'] ?? '';
+
+    if (pillar.length == 0 || pillar.length > 50) {
+      return Response.internalServerError();
+    }
+
+    final profile = await DatabaseService().getPillarProfile(pillar);
+    return Response.ok(
+      Utils.toJson(profile),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _pillarOffChainHandler(Request request) async {
+    print('Start update pillar off-chain information.');
+
+    final reqData = jsonDecode(await request.readAsString());
+    print(reqData);
+
+    if (!_verifyPillarOffChainInfo(reqData)) {
+      return Response.internalServerError();
+    }
+
+    final pillarAddress = reqData['pillarAddress'];
+    final pubKey = await DatabaseService().getPublicKeyByAddress(pillarAddress);
+    final pillar = await DatabaseService().getPillar(pillarAddress);
+
+    if (pillar.length == 0 ||
+        pillar['name'].length == 0 ||
+        pillar['name'] != reqData['info']['name']) {
+      print('Failed: Pillar not found.');
+      return Response.internalServerError();
+    }
+
+    print('PubKey: ' + pubKey);
+    print('Pillar: ' + pillar['name']);
+
+    const challenge = 'kF5Ja7nPZ4';
+    if (!(await _verifySignature(
+        challenge, pillarAddress, pubKey, reqData['signature'].trim()))) {
+      print('Failed: Unable to verify signature.');
+      return Response.internalServerError();
+    }
+
+    final dbFile = File(
+        '${Config.pillarsOffChainInfoDirectory}/pillars_off_chain_info.json');
+    final db = jsonDecode(dbFile.readAsStringSync());
+
+    for (final key in reqData['info'].keys) {
+      if (key == 'links') {
+        for (final linkKey in reqData['info'][key].keys) {
+          reqData['info'][key][linkKey] =
+              (reqData['info'][key][linkKey] as String).trim();
+        }
+      } else {
+        reqData['info'][key] = (reqData['info'][key] as String).trim();
+      }
+    }
+
+    db[pillarAddress] = reqData['info'];
+
+    dbFile.writeAsStringSync(Utils.toJson(db));
+
+    print('Updated successfully.');
+    return Response.ok(
+      '',
+      headers: headers,
+    );
+  }
+}
+
+Future<bool> _verifySignature(String message, String address,
+    String base64PubKey, String signature) async {
+  final decodedMsg = HEX.decode(HEX.encode(Utf8Encoder().convert(message)));
+  final decodedPubKey = base64Decode(base64PubKey);
+  final decodedSignature = HEX.decode(signature);
+
+  return Address.fromPublicKey(decodedPubKey).toString() == address &&
+      (await Crypto.verify(decodedSignature, decodedMsg, decodedPubKey));
+}
+
+bool _verifyPillarOffChainInfo(Map<String, dynamic> offChainInfo) {
+  const rootKeys = ['pillarAddress', 'signature', 'info'];
+  const infoKeys = ['name', 'links', 'avatar', 'description'];
+  const linkKeys = [
+    'telegram',
+    'twitter',
+    'website',
+    'github',
+    'medium',
+    'email'
+  ];
+
+  if (offChainInfo.length == rootKeys.length &&
+      offChainInfo.containsKeys(rootKeys)) {
+    for (final key in rootKeys) {
+      if (!(offChainInfo[key].length <= 250)) {
+        print('Failed: Root value too long.');
+        return false;
+      }
+    }
+
+    if (offChainInfo['info'].length == infoKeys.length &&
+        (offChainInfo['info'] as Map<String, dynamic>).containsKeys(infoKeys)) {
+      if (!(offChainInfo['info']['name'].length <= 100) ||
+          !(offChainInfo['info']['avatar'].length <= 250) ||
+          !(offChainInfo['info']['description'].length <= 500)) {
+        print('Failed: Info value too long.');
+        return false;
+      }
+
+      if (offChainInfo['info']['links'].length == linkKeys.length &&
+          (offChainInfo['info']['links'] as Map<String, dynamic>)
+              .containsKeys(linkKeys)) {
+        for (final key in linkKeys) {
+          if (!(offChainInfo['info']['links'][key].length <= 250)) {
+            print('Failed: Link value too long.');
+            return false;
+          }
+        }
+        return true;
+      }
+    }
+  }
+
+  print('Failed: Bad request data.');
+  return false;
 }
