@@ -128,12 +128,18 @@ class Api {
   Future<Response> _votesHandler(Request request) async {
     final pillar = request.url.queryParameters['pillar'] ?? '';
     final page = int.parse(request.url.queryParameters['page'] ?? '1');
+    final searchText = request.url.queryParameters['search'] ?? '';
 
-    if (pillar.length == 0 || pillar.length > 30 || page <= 0 || page > 100) {
+    if (pillar.length == 0 ||
+        pillar.length > 30 ||
+        page <= 0 ||
+        page > 100 ||
+        searchText.length > 50) {
       return Response.internalServerError();
     }
 
-    final votes = await DatabaseService().getVotesByPillar(pillar, page);
+    final votes =
+        await DatabaseService().getVotesByPillar(pillar, page, searchText);
 
     return Response.ok(
       Utils.toJson(votes),
@@ -143,12 +149,13 @@ class Api {
 
   Future<Response> _projectsHandler(Request request) async {
     final page = int.parse(request.url.queryParameters['page'] ?? '1');
+    final searchText = request.url.queryParameters['search'] ?? '';
 
-    if (page <= 0 || page > 100) {
+    if (page <= 0 || page > 100 || searchText.length > 50) {
       return Response.internalServerError();
     }
 
-    final proposals = await DatabaseService().getAzProjects(page);
+    final proposals = await DatabaseService().getAzProjects(page, searchText);
 
     return Response.ok(
       Utils.toJson(proposals),

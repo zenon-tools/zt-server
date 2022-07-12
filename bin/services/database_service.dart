@@ -154,7 +154,8 @@ class DatabaseService {
     return balances;
   }
 
-  Future<dynamic> getVotesByPillar(String pillar, int page) async {
+  Future<dynamic> getVotesByPillar(
+      String pillar, int page, String searchText) async {
     List r = await _conn.query(
         '''SELECT T1.momentumHash, T1.momentumTimestamp, T2.url, T2.name, T3.name, T1.vote, T1.projectId
             FROM ${Table.votes} T1
@@ -164,10 +165,10 @@ class DatabaseService {
                 ON T3.id = T1.phaseId
             INNER JOIN ${Table.pillars} T4
 	              ON T4.name = @pillar
-            WHERE voterAddress = T4.ownerAddress
-            ORDER BY T1.id DESC LIMIT 5
-            OFFSET (@page - 1) * 5''',
-        {'pillar': pillar, 'page': page}).toList();
+            WHERE voterAddress = T4.ownerAddress and (T2.name ILIKE @search or T3.name ILIKE @search)
+            ORDER BY T1.id DESC LIMIT 10
+            OFFSET (@page - 1) * 10''',
+        {'pillar': pillar, 'page': page, 'search': '%$searchText%'}).toList();
 
     List votes = [];
     if (r.isNotEmpty) {
@@ -188,17 +189,20 @@ class DatabaseService {
     return votes;
   }
 
-  Future<dynamic> getAzProjects(int page) async {
+  Future<dynamic> getAzProjects(int page, String searchText) async {
     List r = await _conn.query(
         '''SELECT T1.name, '' as phaseName, T1.id as projectId, T1.creationTimestamp, T1.url, T1.status, T1.yesVotes, T1.noVotes, T1.totalVotes, T1.znnFundsNeeded, T1.qsrFundsNeeded
             FROM ${Table.projects} T1
+            WHERE T1.name ILIKE @search
             UNION ALL
             SELECT T3.name, T2.name, T2.projectId, T2.creationTimestamp, T2.url, T2.status, T2.yesVotes, T2.noVotes, T2.totalVotes, T2.znnFundsNeeded, T2.qsrFundsNeeded
             FROM ${Table.projectPhases} T2
             INNER JOIN ${Table.projects} T3
 	            ON projectId = T3.id
+            WHERE T2.name ILIKE @search
             ORDER BY creationTimestamp DESC LIMIT 10
-            OFFSET (@page - 1) * 10''', {'page': page}).toList();
+            OFFSET (@page - 1) * 10''',
+        {'page': page, 'search': '%$searchText%'}).toList();
 
     List proposals = [];
     if (r.isNotEmpty) {
