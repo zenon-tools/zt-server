@@ -45,6 +45,7 @@ class Api {
       ..get('/reward-share-history', _rewardShareHistoryHandler)
       ..get('/pillar-delegators', _pillarDelegatorsHandler)
       ..get('/pillar-profile', _pillarProfileHandler)
+      ..get('/donations', _donationsHandler)
       ..put('/pillar-off-chain', _pillarOffChainHandler);
 
     router.all('/<ignored|.*>', (Request request) => Response.notFound('null'));
@@ -259,6 +260,15 @@ class Api {
     final profile = await DatabaseService().getPillarProfile(pillar);
     return Response.ok(
       Utils.toJson(profile),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _donationsHandler(Request request) async {
+    final List donations = await DatabaseService().getDonations();
+
+    return Response.ok(
+      Utils.toJson(donations),
       headers: headers,
     );
   }

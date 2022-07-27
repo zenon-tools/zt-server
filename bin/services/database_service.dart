@@ -423,4 +423,34 @@ class DatabaseService {
       return '';
     }
   }
+
+  Future<dynamic> getDonations() async {
+    List r = await _conn.query(
+        '''SELECT T1.momentumTimestamp, T1.address, T1.amount, T2.symbol, T2.decimals, coalesce(T3.name, '')
+            FROM ${Table.accountBlocks} T1
+            INNER JOIN ${Table.tokens} T2
+	              ON T2.tokenStandard = T1.tokenStandard
+            LEFT JOIN pillars T3
+                ON T1.address = T3.ownerAddress or T1.address = T3.withdrawAddress or T1.address = T3.producerAddress
+            WHERE toAddress = @toAddress and address != 'z1qxemdeddedxt0kenxxxxxxxxxxxxxxxxh9amk0'
+            ORDER BY momentumHeight DESC LIMIT 100
+           ''', {'toAddress': Config.donationAddressZnn}).toList();
+
+    List donations = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 6) {
+          donations.add({
+            'momentumTimestamp': row[0],
+            'address': row[1],
+            'amount': row[2],
+            'symbol': row[3],
+            'decimals': row[4],
+            'pillar': row[5]
+          });
+        }
+      }
+    }
+    return donations;
+  }
 }

@@ -14,6 +14,8 @@ class Config {
   static String _refinerDataStoreDirectory = '';
   static String _pillarsOffChainInfoDirectory = '';
 
+  static String _donationAddressZnn = '';
+
   static int get serverPort {
     return _serverPort;
   }
@@ -46,6 +48,10 @@ class Config {
     return _pillarsOffChainInfoDirectory;
   }
 
+  static String get donationAddressZnn {
+    return _donationAddressZnn;
+  }
+
   static void load() {
     final settings = SettingsYaml.load(
         pathToSettings: '${Directory.current.path}/config.yaml');
@@ -62,5 +68,7 @@ class Config {
         settings['refiner_data_store_directory'] as String;
     _pillarsOffChainInfoDirectory =
         settings['pillars_off_chain_info_directory'] as String;
+
+    _donationAddressZnn = settings['donation_address_znn'] as String;
   }
 }
