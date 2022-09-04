@@ -46,6 +46,17 @@ class Api {
       ..get('/pillar-delegators', _pillarDelegatorsHandler)
       ..get('/pillar-profile', _pillarProfileHandler)
       ..get('/donations', _donationsHandler)
+      ..get('/accounts', _accountsHandler)
+      ..get('/accounts/<address>', _accountDetailsHandler)
+      ..get('/accounts/<address>/transactions/received',
+          _accountTransactionsHandler)
+      ..get('/accounts/<address>/transactions/unreceived',
+          _accountUnreceivedTransactionsHandler)
+      ..get('/accounts/<address>/tokens', _accountTokensHandler)
+      ..get('/accounts/<address>/proposals', _accountAzProposalsHandler)
+      ..get('/accounts/<address>/fusions', _accountPlasmaFusionsHandler)
+      ..get('/accounts/<address>/participation', _accountParticipationHandler)
+      ..get('/tokens/<tokenId>', _tokenHandler)
       ..put('/pillar-off-chain', _pillarOffChainHandler);
 
     router.all('/<ignored|.*>', (Request request) => Response.notFound('null'));
@@ -110,7 +121,7 @@ class Api {
       DatabaseService().getDelegation(address),
       DatabaseService().getSentinel(address),
       DatabaseService().getPillar(address),
-      DatabaseService().getBalances(address),
+      DatabaseService().getTokens(address),
     ]);
 
     return Response.ok(
@@ -269,6 +280,158 @@ class Api {
 
     return Response.ok(
       Utils.toJson(donations),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountsHandler(Request request) async {
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+    final searchText = request.url.queryParameters['search'] ?? '';
+
+    if (page <= 0 || page > 100) {
+      return Response.internalServerError();
+    }
+
+    final List accounts = await DatabaseService().getAccounts(page, searchText);
+
+    return Response.ok(
+      Utils.toJson(accounts),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountDetailsHandler(Request request) async {
+    final address = request.params['address'] ?? '';
+
+    final accountDetails = await DatabaseService().getAccountDetails(address);
+    final fusedQsr = await DatabaseService().getAccountFusedQsr(address);
+    accountDetails['fusedQsr'] = fusedQsr;
+    return Response.ok(
+      Utils.toJson(accountDetails),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountTransactionsHandler(Request request) async {
+    final address = request.params['address'] ?? '';
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+
+    if (page <= 0 || page > 100 || address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final List txs =
+        await DatabaseService().getAddressTransactions(address, page);
+
+    return Response.ok(
+      Utils.toJson(txs),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountUnreceivedTransactionsHandler(
+      Request request) async {
+    final address = request.params['address'] ?? '';
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+
+    if (page <= 0 || page > 100 || address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final List txs =
+        await DatabaseService().getAddressUnreceivedTransactions(address, page);
+
+    return Response.ok(
+      Utils.toJson(txs),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountTokensHandler(Request request) async {
+    final address = request.params['address'] ?? '';
+
+    if (address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final tokens = await DatabaseService().getTokens(address);
+
+    return Response.ok(
+      Utils.toJson(tokens),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountAzProposalsHandler(Request request) async {
+    final address = request.params['address'] ?? '';
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+
+    if (page <= 0 || page > 100 || address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final proposals =
+        await DatabaseService().getAddressAzProposals(address, page);
+
+    return Response.ok(
+      Utils.toJson(proposals),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountPlasmaFusionsHandler(Request request) async {
+    final address = request.params['address'] ?? '';
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+
+    if (page <= 0 || page > 100 || address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final fusions = await DatabaseService().getAddressFusions(address, page);
+
+    return Response.ok(
+      Utils.toJson(fusions),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountParticipationHandler(Request request) async {
+    final address = request.params['address'] ?? '';
+
+    if (address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final futures = await Future.wait([
+      DatabaseService().getStakes(address),
+      DatabaseService().getDelegation(address),
+      DatabaseService().getSentinel(address),
+      DatabaseService().getPillar(address)
+    ]);
+
+    return Response.ok(
+      Utils.toJson({
+        'address': address,
+        'stakes': futures[0],
+        'delegation': futures[1],
+        'sentinel': futures[2],
+        'pillar': futures[3]
+      }),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _tokenHandler(Request request) async {
+    final tokenId = request.params['tokenId'] ?? '';
+
+    if (tokenId.length != 26) {
+      return Response.internalServerError();
+    }
+
+    final token = await DatabaseService().getToken(tokenId);
+
+    return Response.ok(
+      Utils.toJson(token),
       headers: headers,
     );
   }

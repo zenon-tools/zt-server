@@ -13,6 +13,7 @@ class Table {
   static String get projects => 'Projects';
   static String get projectPhases => 'ProjectPhases';
   static String get votes => 'Votes';
+  static String get fusions => 'Fusions';
 }
 
 class DatabaseService {
@@ -132,26 +133,55 @@ class DatabaseService {
     }
   }
 
-  Future<dynamic> getBalances(String address) async {
-    List r =
-        await _conn.query('''SELECT T1.balance, T2.name, T2.symbol, T2.decimals
+  Future<dynamic> getTokens(String address) async {
+    List r = await _conn.query(
+        '''SELECT T1.balance, T2.name, T2.symbol, T2.decimals, T2.tokenStandard
             FROM ${Table.balances} T1, tokens T2
-            WHERE T1.address = @address and T2.tokenStandard = T1.tokenStandard
-            LIMIT 50''', {'address': address}).toList();
+            WHERE T1.balance > 0 and T1.address = @address and T2.tokenStandard = T1.tokenStandard
+            ORDER BY T2.name ASC LIMIT 50''', {'address': address}).toList();
     List balances = [];
     if (r.isNotEmpty) {
       for (final Row row in r) {
-        if (row.toList().length == 4) {
+        if (row.toList().length == 5) {
           balances.add({
             'balance': row[0],
             'name': row[1],
             'symbol': row[2],
-            'decimals': row[3]
+            'decimals': row[3],
+            'tokenStandard': row[4],
           });
         }
       }
     }
     return balances;
+  }
+
+  Future<dynamic> getAccounts(int page, String searchText) async {
+    List r = await _conn.query(
+        '''SELECT T1.address, coalesce(T2.balance, 0) as znnBalance, coalesce(T3.balance, 0) as qsrBalance, T1.blockCount
+            FROM accounts T1
+            LEFT JOIN balances T2
+	            ON T2.address = T1.address and T2.tokenStandard = 'zts1znnxxxxxxxxxxxxx9z4ulx'
+            LEFT JOIN balances T3
+              ON T3.address = T1.address and T3.tokenStandard = 'zts1qsrxxxxxxxxxxxxxmrhjll'
+            WHERE T1.address ILIKE @search
+            ORDER BY znnBalance DESC LIMIT 20
+            OFFSET (@page - 1) * 20''',
+        {'page': page, 'search': '%$searchText%'}).toList();
+    List accounts = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 4) {
+          accounts.add({
+            'address': row[0],
+            'znnBalance': row[1],
+            'qsrBalance': row[2],
+            'blockCount': row[3]
+          });
+        }
+      }
+    }
+    return accounts;
   }
 
   Future<dynamic> getVotesByPillar(
@@ -452,5 +482,213 @@ class DatabaseService {
       }
     }
     return donations;
+  }
+
+  Future<dynamic> getAccountDetails(String address) async {
+    List r = await _conn.query(
+        '''SELECT T1.blockCount, T1.publicKey, COALESCE(T2.balance, 0) as znnBalance, COALESCE(T3.balance, 0) as qsrBalance
+          FROM ${Table.accounts} T1
+          LEFT JOIN ${Table.balances} T2
+	          ON T2.address = T1.address and T2.tokenStandard = 'zts1znnxxxxxxxxxxxxx9z4ulx'
+          LEFT JOIN ${Table.balances} T3
+	          ON T3.address = T1.address and T3.tokenStandard = 'zts1qsrxxxxxxxxxxxxxmrhjll'
+          WHERE T1.address = @address
+          ''', {'address': address}).toList();
+
+    if (r.isNotEmpty) {
+      Row row = r[0];
+      return {
+        'height': row[0],
+        'publicKey': row[1],
+        'znnBalance': row[2],
+        'qsrBalance': row[3]
+      };
+    } else {
+      return {'height': 0, 'publicKey': '', 'znnBalance': 0, 'qsrBalance': 0};
+    }
+  }
+
+  Future<dynamic> getAddressActiveSince(String address) async {
+    List r = await _conn
+        .query('''SELECT address, MIN(momentumTimestamp) as momentumTimestamp
+          FROM ${Table.accountBlocks}
+          WHERE address = @address or toAddress = @address
+          GROUP BY address
+          ORDER BY momentumTimestamp ASC LIMIT 1
+          ''', {'address': address}).toList();
+
+    if (r.isNotEmpty) {
+      return r[0][1];
+    } else {
+      return 0;
+    }
+  }
+
+  Future<dynamic> getAddressTransactions(String address, int page) async {
+    List r = await _conn.query(
+        '''SELECT T1.hash, T1.momentumTimestamp, T1.method, T1.amount, coalesce(T2.symbol, '') as symbol, coalesce(T2.decimals, 0) as decimals, T1.address, T1.toAddress, T1.pairedAccountBlock
+            FROM ${Table.accountBlocks} T1
+            LEFT JOIN tokens T2
+	            ON T2.tokenStandard = T1.tokenStandard
+            WHERE (address = @address or toAddress = @address) and (pairedAccountBlock = '') IS NOT @isReceived
+            ORDER BY momentumHeight DESC LIMIT 10
+            OFFSET (@page - 1) * 10
+           ''',
+        {'address': address, 'page': page, 'isReceived': true}).toList();
+
+    List txs = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 9) {
+          txs.add({
+            'hash': row[0],
+            'momentumTimestamp': row[1],
+            'method': row[2].length == 0
+                ? row[4].length == 0
+                    ? 'Unknown'
+                    : 'Transfer'
+                : row[2],
+            'amount': row[3],
+            'symbol': row[4],
+            'decimals': row[5],
+            'address': row[6],
+            'toAddress': row[7]
+          });
+        }
+      }
+    }
+    return txs;
+  }
+
+  Future<dynamic> getAddressUnreceivedTransactions(
+      String address, int page) async {
+    List r = await _conn.query(
+        '''SELECT T1.hash, T1.momentumTimestamp, T1.method, T1.amount, T2.symbol, T2.decimals, T1.address, T1.toAddress, T1.pairedAccountBlock
+            FROM ${Table.accountBlocks} T1
+            INNER JOIN tokens T2
+	            ON T2.tokenStandard = T1.tokenStandard
+            WHERE (toAddress = @address) and (pairedAccountBlock = '') IS NOT @isReceived
+            ORDER BY momentumHeight DESC LIMIT 10
+            OFFSET (@page - 1) * 10
+           ''',
+        {'address': address, 'page': page, 'isReceived': false}).toList();
+
+    List txs = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 9) {
+          txs.add({
+            'hash': row[0],
+            'momentumTimestamp': row[1],
+            'method': row[2].length == 0 ? 'Transfer' : row[2],
+            'amount': row[3],
+            'symbol': row[4],
+            'decimals': row[5],
+            'address': row[6],
+            'toAddress': row[7]
+          });
+        }
+      }
+    }
+    return txs;
+  }
+
+  Future<dynamic> getAddressAzProposals(String address, int page) async {
+    List r = await _conn.query(
+        '''SELECT T1.name, '' as phaseName, T1.id as projectId, T1.creationTimestamp, T1.url, T1.status
+            FROM ${Table.projects} T1
+            WHERE owner = @owner and T1.name ILIKE '%%' 
+            UNION ALL
+            SELECT T3.name, T2.name, T2.projectId, T2.creationTimestamp, T2.url, T2.status
+            FROM ${Table.projectPhases} T2
+            INNER JOIN ${Table.projects} T3
+	            ON projectId = T3.id
+            WHERE owner = @owner and T2.name ILIKE '%%'
+            ORDER BY creationTimestamp DESC LIMIT 10
+            OFFSET (@page - 1) * 10
+           ''', {'owner': address, 'page': page}).toList();
+
+    List proposals = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 6) {
+          proposals.add({
+            'projectName': row[0],
+            'phaseName': row[1],
+            'projectId': row[2],
+            'creationTimestamp': row[3],
+            'url': row[4],
+            'status': row[5]
+          });
+        }
+      }
+    }
+    return proposals;
+  }
+
+  Future<dynamic> getAddressFusions(String address, int page) async {
+    List r = await _conn.query(
+        '''SELECT momentumHeight, momentumTimestamp, qsrAmount, expirationHeight, address, beneficiary
+            FROM ${Table.fusions}
+            WHERE (address = @address or beneficiary = @address) and isActive = true
+            ORDER BY momentumTimestamp DESC LIMIT 10
+            OFFSET (@page - 1) * 10
+           ''', {'address': address, 'page': page}).toList();
+
+    List fusions = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 6) {
+          fusions.add({
+            'momentumHeight': row[0],
+            'momentumTimestamp': row[1],
+            'qsrAmount': row[2],
+            'expirationHeight': row[3],
+            'address': row[4],
+            'beneficiary': row[5]
+          });
+        }
+      }
+    }
+    return fusions;
+  }
+
+  Future<dynamic> getAccountFusedQsr(String address) async {
+    List r = await _conn.query('''SELECT qsrAmount
+          FROM ${Table.fusions}
+          WHERE beneficiary = @address and isActive = true
+          LIMIT 100
+          ''', {'address': address}).toList();
+
+    if (r.isNotEmpty) {
+      return r.fold<num>(0, (sum, row) => sum + row[0]);
+    } else {
+      return 0;
+    }
+  }
+
+  Future<dynamic> getToken(String tokenId) async {
+    List r = await _conn.query(
+        '''SELECT name, symbol, domain, decimals, owner, totalSupply, maxSupply, isBurnable, isMintable, isUtility
+            FROM ${Table.tokens}
+            WHERE tokenStandard = @tokenId
+           ''', {'tokenId': tokenId}).toList();
+    if (r.isNotEmpty) {
+      Row row = r[0];
+      return {
+        'name': row[0],
+        'symbol': row[1],
+        'domain': row[2],
+        'decimals': row[3],
+        'owner': row[4],
+        'totalSupply': row[5],
+        'maxSupply': row[6],
+        'isBurnable': row[7],
+        'isMintable': row[8],
+        'isUtility': row[9]
+      };
+    } else {
+      return {};
+    }
   }
 }
