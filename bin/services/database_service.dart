@@ -9,6 +9,7 @@ class Table {
   static String get accountBlocks => 'AccountBlocks';
   static String get pillars => 'Pillars';
   static String get sentinels => 'Sentinels';
+  static String get stakes => 'Stakes';
   static String get tokens => 'Tokens';
   static String get projects => 'Projects';
   static String get projectPhases => 'ProjectPhases';
@@ -48,10 +49,10 @@ class DatabaseService {
 
   Future<dynamic> getStakes(String address) async {
     List r = await _conn.query(
-        '''SELECT T1.momentumtimestamp, (T1.input::json->>'durationInSec')::int, T1.amount
-                FROM ${Table.accountBlocks} T1
-                WHERE method = 'Stake' and address = @address
-                ORDER BY T1.momentumtimestamp DESC LIMIT 100''',
+        '''SELECT startTimestamp, durationInSec, znnAmount
+                FROM ${Table.stakes}
+                WHERE isActive = true and address = @address
+                ORDER BY startTimestamp DESC LIMIT 100''',
         {'address': address}).toList();
 
     List stakes = [];
@@ -526,12 +527,12 @@ class DatabaseService {
 
   Future<dynamic> getAddressTransactions(String address, int page) async {
     List r = await _conn.query(
-        '''SELECT T1.hash, T1.momentumTimestamp, T1.method, T1.amount, coalesce(T2.symbol, '') as symbol, coalesce(T2.decimals, 0) as decimals, T1.address, T1.toAddress, T1.pairedAccountBlock
+        '''SELECT T1.hash, T1.momentumTimestamp, T1.method, T1.amount, coalesce(T2.symbol, '') as symbol, coalesce(T2.decimals, 0) as decimals, T1.address, T1.toAddress
             FROM ${Table.accountBlocks} T1
             LEFT JOIN tokens T2
 	            ON T2.tokenStandard = T1.tokenStandard
-            WHERE (address = @address or toAddress = @address) and (pairedAccountBlock = '') IS NOT @isReceived
-            ORDER BY momentumHeight DESC LIMIT 10
+            WHERE address = @address and (pairedAccountBlock = '') IS NOT @isReceived
+            ORDER BY T1.height DESC LIMIT 10
             OFFSET (@page - 1) * 10
            ''',
         {'address': address, 'page': page, 'isReceived': true}).toList();
@@ -539,7 +540,7 @@ class DatabaseService {
     List txs = [];
     if (r.isNotEmpty) {
       for (final Row row in r) {
-        if (row.toList().length == 9) {
+        if (row.toList().length == 8) {
           txs.add({
             'hash': row[0],
             'momentumTimestamp': row[1],
@@ -558,6 +559,32 @@ class DatabaseService {
       }
     }
     return txs;
+  }
+
+  Future<dynamic> getAddressReceivedTransactionData(String hash) async {
+    List r = await _conn.query(
+        '''SELECT T1.hash, T1.amount, coalesce(T2.symbol, '') as symbol, coalesce(T2.decimals, 0) as decimals, T1.method, T1.address, T1.toAddress
+            FROM ${Table.accountBlocks} T1
+            LEFT JOIN tokens T2
+	            ON T2.tokenStandard = T1.tokenStandard
+            WHERE T1.pairedAccountBlock = @hash
+           ''', {'hash': hash}).toList();
+
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 7) {
+          return {
+            'amount': row[1],
+            'symbol': row[2],
+            'decimals': row[3],
+            'method': row[4],
+            'address': row[5],
+            'toAddress': row[6]
+          };
+        }
+      }
+    }
+    return {};
   }
 
   Future<dynamic> getAddressUnreceivedTransactions(

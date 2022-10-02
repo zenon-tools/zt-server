@@ -323,6 +323,28 @@ class Api {
     final List txs =
         await DatabaseService().getAddressTransactions(address, page);
 
+    // TODO: This could probably be fixed with better indexing.
+    for (int i = 0; i < txs.length; i++) {
+      final hash = txs[i]['hash'];
+      if (txs[i]['toAddress'] == 'z1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsggv2f' &&
+          hash.length > 0) {
+        final data =
+            await DatabaseService().getAddressReceivedTransactionData(hash);
+        txs[i]['amount'] = data['amount'];
+        txs[i]['symbol'] = data['symbol'];
+        txs[i]['decimals'] = data['decimals'];
+        txs[i]['address'] = data['address'];
+        txs[i]['toAddress'] = data['toAddress'];
+        if (txs[i]['method'] == 'Unknown') {
+          if (data['method'].length > 0) {
+            txs[i]['method'] = data['method'];
+          } else if (data['symbol'].length > 0) {
+            txs[i]['method'] = 'Transfer';
+          }
+        }
+      }
+    }
+
     return Response.ok(
       Utils.toJson(txs),
       headers: headers,
