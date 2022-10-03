@@ -531,11 +531,10 @@ class DatabaseService {
             FROM ${Table.accountBlocks} T1
             LEFT JOIN tokens T2
 	            ON T2.tokenStandard = T1.tokenStandard
-            WHERE address = @address and (pairedAccountBlock = '') IS NOT @isReceived
+            WHERE address = @address
             ORDER BY T1.height DESC LIMIT 10
             OFFSET (@page - 1) * 10
-           ''',
-        {'address': address, 'page': page, 'isReceived': true}).toList();
+           ''', {'address': address, 'page': page}).toList();
 
     List txs = [];
     if (r.isNotEmpty) {
