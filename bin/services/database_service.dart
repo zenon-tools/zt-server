@@ -134,7 +134,7 @@ class DatabaseService {
     }
   }
 
-  Future<dynamic> getTokens(String address) async {
+  Future<dynamic> getAccountTokens(String address) async {
     List r = await _conn.query(
         '''SELECT T1.balance, T2.name, T2.symbol, T2.decimals, T2.tokenStandard
             FROM ${Table.balances} T1, tokens T2
@@ -693,12 +693,12 @@ class DatabaseService {
     }
   }
 
-  Future<dynamic> getToken(String tokenId) async {
+  Future<dynamic> getToken(String tokenStandard) async {
     List r = await _conn.query(
-        '''SELECT name, symbol, domain, decimals, owner, totalSupply, maxSupply, isBurnable, isMintable, isUtility
+        '''SELECT name, symbol, domain, decimals, owner, totalSupply, maxSupply, isBurnable, isMintable, isUtility, totalBurned, lastUpdateTimestamp, holderCount
             FROM ${Table.tokens}
-            WHERE tokenStandard = @tokenId
-           ''', {'tokenId': tokenId}).toList();
+            WHERE tokenStandard = @tokenStandard
+           ''', {'tokenStandard': tokenStandard}).toList();
     if (r.isNotEmpty) {
       Row row = r[0];
       return {
@@ -711,10 +711,119 @@ class DatabaseService {
         'maxSupply': row[6],
         'isBurnable': row[7],
         'isMintable': row[8],
-        'isUtility': row[9]
+        'isUtility': row[9],
+        'totalBurned': row[10],
+        'lastUpdateTimestamp': row[11],
+        'holderCount': row[12]
       };
     } else {
       return {};
     }
+  }
+
+  Future<dynamic> getTokenCreationTimestamp(String tokenStandard) async {
+    if (tokenStandard == 'zts1znnxxxxxxxxxxxxx9z4ulx' ||
+        tokenStandard == 'zts1qsrxxxxxxxxxxxxxmrhjll') {
+      return 0;
+    }
+
+    List r = await _conn.query('''SELECT momentumTimestamp
+            FROM ${Table.accountBlocks}
+            WHERE tokenStandard = @tokenStandard
+            ORDER BY momentumHeight DESC LIMIT 1
+           ''', {'tokenStandard': tokenStandard}).toList();
+    return r.isNotEmpty ? r[0][0] : 0;
+  }
+
+  Future<dynamic> getTokenLastUpdateTimestamp(String tokenStandard) async {
+    List r = await _conn.query('''SELECT momentumTimestamp
+            FROM ${Table.accountBlocks}
+            WHERE method = 'UpdateToken' and input::json->>'tokenStandard' = @tokenStandard
+            ORDER BY momentumHeight DESC LIMIT 1
+           ''', {'tokenStandard': tokenStandard}).toList();
+    return r.isNotEmpty ? r[0][0] : 0;
+  }
+
+  Future<dynamic> getTokens(int page, String searchText) async {
+    List r = await _conn.query(
+        '''SELECT tokenStandard, name, symbol, domain, owner, totalSupply, maxSupply, decimals, holderCount
+            FROM ${Table.tokens}
+            WHERE name ILIKE @search or symbol ILIKE @search or domain ILIKE @search or tokenStandard ILIKE @search or owner ILIKE @search
+            ORDER BY holderCount DESC LIMIT 20
+            OFFSET (@page - 1) * 20
+           ''', {'page': page, 'search': '%$searchText%'}).toList();
+
+    List tokens = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        if (row.toList().length == 9) {
+          tokens.add({
+            'tokenStandard': row[0],
+            'name': row[1],
+            'symbol': row[2],
+            'domain': row[3],
+            'owner': row[4],
+            'totalSupply': row[5],
+            'maxSupply': row[6],
+            'decimals': row[7],
+            'holderCount': row[8]
+          });
+        }
+      }
+    }
+    return tokens;
+  }
+
+  Future<dynamic> getTokenHolders(
+      String tokenId, int page, String searchText) async {
+    List r = await _conn.query('''SELECT address, balance
+            FROM ${Table.balances}
+            WHERE tokenStandard = @tokenStandard and balance > 0 and address ILIKE @search
+            ORDER BY balance DESC LIMIT 10
+            OFFSET (@page - 1) * 10''', {
+      'tokenStandard': tokenId,
+      'page': page,
+      'search': '%$searchText%'
+    }).toList();
+    List holders = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        holders.add({'address': row[0], 'balance': row[1]});
+      }
+    }
+    return holders;
+  }
+
+  Future<dynamic> getTokenTransactions(
+      String tokenId, int page, String searchText) async {
+    List r = await _conn.query(
+        '''SELECT hash, momentumTimestamp, method, amount, address, toAddress
+            FROM ${Table.accountBlocks}
+            WHERE tokenStandard = @tokenStandard and (address ILIKE @search or toAddress ILIKE @search)
+            ORDER BY momentumTimestamp DESC LIMIT 10
+            OFFSET (@page - 1) * 10''',
+        {
+          'tokenStandard': tokenId,
+          'page': page,
+          'search': '%$searchText%'
+        }).toList();
+    List txs = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        txs.add({
+          'hash': row[0],
+          'momentumTimestamp': row[1],
+          'method': row[2].length == 0
+              ? row[4].length == 0
+                  ? 'Unknown'
+                  : 'Transfer'
+              : row[2],
+          'amount': row[3],
+          'address': row[4],
+          'toAddress': row[5]
+        });
+      }
+    }
+    return txs;
   }
 }

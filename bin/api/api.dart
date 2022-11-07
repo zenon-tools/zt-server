@@ -56,7 +56,10 @@ class Api {
       ..get('/accounts/<address>/proposals', _accountAzProposalsHandler)
       ..get('/accounts/<address>/fusions', _accountPlasmaFusionsHandler)
       ..get('/accounts/<address>/participation', _accountParticipationHandler)
+      ..get('/tokens', _tokensHandler)
       ..get('/tokens/<tokenId>', _tokenHandler)
+      ..get('/tokens/<tokenId>/holders', _tokenHoldersHandler)
+      ..get('/tokens/<tokenId>/transactions', _tokenTransactionsHandler)
       ..put('/pillar-off-chain', _pillarOffChainHandler);
 
     router.all('/<ignored|.*>', (Request request) => Response.notFound('null'));
@@ -121,7 +124,7 @@ class Api {
       DatabaseService().getDelegation(address),
       DatabaseService().getSentinel(address),
       DatabaseService().getPillar(address),
-      DatabaseService().getTokens(address),
+      DatabaseService().getAccountTokens(address),
     ]);
 
     return Response.ok(
@@ -288,7 +291,7 @@ class Api {
     final page = int.parse(request.url.queryParameters['page'] ?? '1');
     final searchText = request.url.queryParameters['search'] ?? '';
 
-    if (page <= 0 || page > 100) {
+    if (page <= 0 || page > 100 || searchText.length > 50) {
       return Response.internalServerError();
     }
 
@@ -316,7 +319,7 @@ class Api {
     final address = request.params['address'] ?? '';
     final page = int.parse(request.url.queryParameters['page'] ?? '1');
 
-    if (page <= 0 || page > 100 || address.length != 40) {
+    if (page <= 0 || page > 10000 || address.length != 40) {
       return Response.internalServerError();
     }
 
@@ -376,7 +379,7 @@ class Api {
       return Response.internalServerError();
     }
 
-    final tokens = await DatabaseService().getTokens(address);
+    final tokens = await DatabaseService().getAccountTokens(address);
 
     return Response.ok(
       Utils.toJson(tokens),
@@ -443,6 +446,22 @@ class Api {
     );
   }
 
+  Future<Response> _tokensHandler(Request request) async {
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+    final searchText = request.url.queryParameters['search'] ?? '';
+
+    if (page <= 0 || page > 1000 || searchText.length > 50) {
+      return Response.internalServerError();
+    }
+
+    final List tokens = await DatabaseService().getTokens(page, searchText);
+
+    return Response.ok(
+      Utils.toJson(tokens),
+      headers: headers,
+    );
+  }
+
   Future<Response> _tokenHandler(Request request) async {
     final tokenId = request.params['tokenId'] ?? '';
 
@@ -451,9 +470,54 @@ class Api {
     }
 
     final token = await DatabaseService().getToken(tokenId);
+    final creationTimestamp =
+        await DatabaseService().getTokenCreationTimestamp(tokenId);
+    token['creationTimestamp'] = creationTimestamp;
 
     return Response.ok(
       Utils.toJson(token),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _tokenHoldersHandler(Request request) async {
+    final tokenId = request.params['tokenId'] ?? '';
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+    final searchText = request.url.queryParameters['search'] ?? '';
+
+    if (page <= 0 ||
+        page > 10000 ||
+        tokenId.length != 26 ||
+        searchText.length > 50) {
+      return Response.internalServerError();
+    }
+
+    final holders =
+        await DatabaseService().getTokenHolders(tokenId, page, searchText);
+
+    return Response.ok(
+      Utils.toJson(holders),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _tokenTransactionsHandler(Request request) async {
+    final tokenId = request.params['tokenId'] ?? '';
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+    final searchText = request.url.queryParameters['search'] ?? '';
+
+    if (page <= 0 ||
+        page > 10000 ||
+        tokenId.length != 26 ||
+        searchText.length > 50) {
+      return Response.internalServerError();
+    }
+
+    final txs =
+        await DatabaseService().getTokenTransactions(tokenId, page, searchText);
+
+    return Response.ok(
+      Utils.toJson(txs),
       headers: headers,
     );
   }
