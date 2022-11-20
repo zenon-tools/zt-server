@@ -15,6 +15,7 @@ class Table {
   static String get projectPhases => 'ProjectPhases';
   static String get votes => 'Votes';
   static String get fusions => 'Fusions';
+  static String get rewardTransactions => 'RewardTransactions';
 }
 
 class DatabaseService {
@@ -525,21 +526,22 @@ class DatabaseService {
     }
   }
 
-  Future<dynamic> getAddressTransactions(String address, int page) async {
+  Future<dynamic> getAddressTransactions(String address, int page,
+      {int limit = 10}) async {
     List r = await _conn.query(
-        '''SELECT T1.hash, T1.momentumTimestamp, T1.method, T1.amount, coalesce(T2.symbol, '') as symbol, coalesce(T2.decimals, 0) as decimals, T1.address, T1.toAddress
+        '''SELECT T1.hash, T1.momentumTimestamp, T1.method, T1.amount, coalesce(T2.symbol, '') as symbol, coalesce(T2.decimals, 0) as decimals, T1.address, T1.toAddress, T1.pairedAccountBlock
             FROM ${Table.accountBlocks} T1
             LEFT JOIN tokens T2
 	            ON T2.tokenStandard = T1.tokenStandard
             WHERE address = @address
-            ORDER BY T1.height DESC LIMIT 10
-            OFFSET (@page - 1) * 10
-           ''', {'address': address, 'page': page}).toList();
+            ORDER BY T1.height DESC LIMIT @limit
+            OFFSET (@page - 1) * @limit
+           ''', {'address': address, 'page': page, 'limit': limit}).toList();
 
     List txs = [];
     if (r.isNotEmpty) {
       for (final Row row in r) {
-        if (row.toList().length == 8) {
+        if (row.toList().length == 9) {
           txs.add({
             'hash': row[0],
             'momentumTimestamp': row[1],
@@ -552,7 +554,8 @@ class DatabaseService {
             'symbol': row[4],
             'decimals': row[5],
             'address': row[6],
-            'toAddress': row[7]
+            'toAddress': row[7],
+            'pairedAccountBlock': row[8]
           });
         }
       }
@@ -617,6 +620,51 @@ class DatabaseService {
       }
     }
     return txs;
+  }
+
+  Future<dynamic> getAddressRewardTransactions(
+      String address, int startTimestamp, int endTimestamp, String timezone,
+      {String ignoredToken = ''}) async {
+    List r = await _conn.query('''SELECT hash, rewardType, momentumTimestamp,
+            to_timestamp(momentumTimestamp)::timestamp WITH TIME ZONE AT TIME ZONE @timezone ||
+            replace('+' || to_char(current_timestamp AT TIME ZONE @timezone - current_timestamp AT TIME ZONE 'UTC', 'HH24:MMFM'), '+-', '-'),
+            momentumHeight, amount, sourceAddress, accountHeight, tokenStandard,
+            CASE WHEN tokenStandard = 'zts1znnxxxxxxxxxxxxx9z4ulx' THEN 'ZNN' ELSE 'QSR' END as symbol
+            FROM ${Table.rewardTransactions}
+            WHERE address = @address and momentumTimestamp >= @startTimestamp and momentumTimestamp < @endTimestamp and tokenStandard != @ignoredToken
+            ORDER BY accountHeight DESC LIMIT 10000''', {
+      'address': address,
+      'startTimestamp': startTimestamp,
+      'endTimestamp': endTimestamp,
+      'timezone': timezone,
+      'ignoredToken': ignoredToken
+    }).toList();
+    List txs = [];
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        txs.add({
+          'hash': row[0],
+          'rewardType': row[1],
+          'momentumTimestamp': row[2],
+          'momentumDateTime': row[3],
+          'momentumHeight': row[4],
+          'amount': row[5],
+          'sourceAddress': row[6],
+          'accountHeight': row[7],
+          'tokenStandard': row[8],
+          'symbol': row[9],
+        });
+      }
+    }
+    return txs;
+  }
+
+  Future<dynamic> getAddressRewardTransactionsCount(String address) async {
+    List r = await _conn.query('''SELECT COUNT(*)
+            FROM ${Table.rewardTransactions}
+            WHERE address = @address
+            LIMIT 10000''', {'address': address}).toList();
+    return r.isNotEmpty && r[0][0] != null ? r[0][0] : 0;
   }
 
   Future<dynamic> getAddressAzProposals(String address, int page) async {

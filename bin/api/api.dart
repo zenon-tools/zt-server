@@ -5,6 +5,8 @@ import 'package:hex/hex.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 import 'package:znn_sdk_dart/znn_sdk_dart.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../config/config.dart';
 import '../services/database_service.dart';
@@ -56,6 +58,8 @@ class Api {
       ..get('/accounts/<address>/proposals', _accountAzProposalsHandler)
       ..get('/accounts/<address>/fusions', _accountPlasmaFusionsHandler)
       ..get('/accounts/<address>/participation', _accountParticipationHandler)
+      ..get('/accounts/<address>/rewards/csv', _accountRewardsHandlerCsv)
+      ..get('/accounts/<address>/rewards/count', _accountRewardsCountHandler)
       ..get('/tokens', _tokensHandler)
       ..get('/tokens/<tokenId>', _tokenHandler)
       ..get('/tokens/<tokenId>/holders', _tokenHoldersHandler)
@@ -323,14 +327,52 @@ class Api {
       return Response.internalServerError();
     }
 
-    final List txs =
-        await DatabaseService().getAddressTransactions(address, page);
+    final txs = await _getTransactions(address, page: page);
+
+    return Response.ok(
+      Utils.toJson(txs),
+      headers: headers,
+    );
+  }
+
+  /* Future<Response> _accountTransactionsHandlerCsv(Request request) async {
+    final address = request.params['address'] ?? '';
+
+    if (address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final List txs = await _getTransactions(address, limit: 10000);
+
+    String csv =
+        'Account Height, Momentum Timestamp, Amount, Symbol, Momentum Height, Sender, Receiver\n';
+    txs.forEach((item) {});
+
+    final timestamp = (DateTime.now().millisecondsSinceEpoch / 1000).round();
+    return Response.ok(
+      csv,
+      headers: {
+        ...headers,
+        'Content-Type': 'text/csv',
+        'Content-Disposition':
+            'attachment; filename="txs_${address}_${timestamp}.csv"'
+      },
+    );
+  } */
+
+  Future<List> _getTransactions(String address,
+      {int page = 1, int limit = 10}) async {
+    final List txs = await DatabaseService()
+        .getAddressTransactions(address, page, limit: limit);
 
     // TODO: This could probably be fixed with better indexing.
     for (int i = 0; i < txs.length; i++) {
       final hash = txs[i]['hash'];
       if (txs[i]['toAddress'] == 'z1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsggv2f' &&
-          hash.length > 0) {
+          hash.length > 0 &&
+          txs[i]['pairedAccountBlock'] !=
+              '0000000000000000000000000000000000000000000000000000000000000000' &&
+          txs[i]['pairedAccountBlock'] != '') {
         final data =
             await DatabaseService().getAddressReceivedTransactionData(hash);
         txs[i]['amount'] = data['amount'];
@@ -348,10 +390,7 @@ class Api {
       }
     }
 
-    return Response.ok(
-      Utils.toJson(txs),
-      headers: headers,
-    );
+    return txs;
   }
 
   Future<Response> _accountUnreceivedTransactionsHandler(
@@ -442,6 +481,78 @@ class Api {
         'sentinel': futures[2],
         'pillar': futures[3]
       }),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _accountRewardsHandlerCsv(Request request) async {
+    final address = request.params['address'] ?? '';
+    final includeQsr = (request.url.queryParameters['qsr'] ?? 'true') == 'true';
+    final currency = (request.url.queryParameters['currency'] ?? 'usd');
+    final year = request.url.queryParameters['year'] ?? '2021';
+    final timezone = (request.url.queryParameters['timezone'] ?? '');
+
+    if (address.length != 40 ||
+        !['2021', '2022', 'all'].contains(year) ||
+        !['usd', 'eur', 'gbp', 'cad', 'aud'].contains(currency) ||
+        timezone.length == 0 ||
+        timezone.length > 100) {
+      return Response.internalServerError();
+    }
+
+    tz.initializeTimeZones();
+    int startTimestamp = 0;
+    int endTimestamp = 1893456000; // 2030
+
+    if (year != 'all') {
+      startTimestamp =
+          (tz.TZDateTime(tz.getLocation(timezone), int.parse(year), 1, 1)
+                      .millisecondsSinceEpoch /
+                  1000)
+              .round();
+      endTimestamp =
+          (tz.TZDateTime(tz.getLocation(timezone), int.parse(year) + 1, 1, 1)
+                      .millisecondsSinceEpoch /
+                  1000)
+              .round();
+    }
+
+    final ignoredToken = includeQsr ? '' : 'zts1qsrxxxxxxxxxxxxxmrhjll';
+
+    final List rewards = await DatabaseService().getAddressRewardTransactions(
+        address, startTimestamp, endTimestamp, timezone,
+        ignoredToken: ignoredToken);
+
+    final marketHistory = jsonDecode(
+        File('${Config.refinerDataStoreDirectory}/market_history_cache.json')
+            .readAsStringSync());
+
+    final timestamp = (DateTime.now().millisecondsSinceEpoch / 1000).round();
+    return Response.ok(
+      _createRewardTransactionsCsv(
+          rewards, marketHistory, address, currency, timezone),
+      headers: {
+        ...headers,
+        'Content-Type': 'text/csv',
+        'Content-Disposition':
+            'attachment; filename="rewards_${year}_${address}_${timestamp}.csv"'
+      },
+    );
+  }
+
+  Future<Response> _accountRewardsCountHandler(Request request) async {
+    final address = request.params['address'] ?? '';
+
+    if (address.length != 40) {
+      return Response.internalServerError();
+    }
+
+    final count = await DatabaseService().getAddressRewardTransactionsCount(
+      address,
+    );
+
+    return Response.ok(
+      Utils.toJson(count),
       headers: headers,
     );
   }
@@ -636,4 +747,62 @@ bool _verifyPillarOffChainInfo(Map<String, dynamic> offChainInfo) {
 
   print('Failed: Bad request data.');
   return false;
+}
+
+String _createRewardTransactionsCsv(List rewards, dynamic marketHistory,
+    String address, String currency, String timezone) {
+  String csv =
+      'Momentum Timestamp, Amount, Symbol, Value (${currency.toUpperCase()}), Price (${currency.toUpperCase()}), Reward Type, Account Height, Momentum Height, Hash, Sender, Receiver\n';
+
+  num totalZnnRewards = 0;
+  num totalQsrRewards = 0;
+  num totalFiatValue = 0;
+
+  rewards.forEach(((item) {
+    String type = 'Stake';
+    switch (item['rewardType']) {
+      case 1:
+        type = 'Delegation';
+        break;
+      case 2:
+        type = 'Liquidity';
+        break;
+      case 3:
+        type = 'Sentinel';
+        break;
+      case 4:
+        type = 'Pillar';
+        break;
+    }
+
+    final amount = item['amount'] / 100000000;
+
+    final dt = tz.TZDateTime.fromMillisecondsSinceEpoch(
+        (tz.getLocation(timezone)), item['momentumTimestamp'] * 1000);
+    final midnight =
+        DateTime.utc(dt.year, dt.month, dt.day).millisecondsSinceEpoch;
+
+    final price = item['symbol'].toLowerCase() == 'znn'
+        ? (marketHistory['znn'][currency][midnight.toString()] ?? 0)
+        : 0;
+
+    final fiatValue = amount * price;
+    csv +=
+        '''${item['momentumDateTime']}, ${amount}, ${item['symbol']}, ${fiatValue.toStringAsFixed(2)}, ${price.toStringAsFixed(2)}, ${type}, ${item['accountHeight']}, ${item['momentumHeight']}, ${item['hash']}, ${item['sourceAddress']}, ${address}\n''';
+
+    if (item['symbol'].toLowerCase() == 'znn') {
+      totalZnnRewards += amount;
+    } else {
+      totalQsrRewards += amount;
+    }
+
+    totalFiatValue += fiatValue;
+  }));
+
+  csv +=
+      '\nTotal ZNN rewards:, ${totalZnnRewards}\nTotal QSR rewards:, ${totalQsrRewards}\nTotal ZNN value (${currency.toUpperCase()}):, ${totalFiatValue.toStringAsFixed(2)}';
+
+  csv += '\n\nPrice information provided by CoinGecko.';
+
+  return csv;
 }
