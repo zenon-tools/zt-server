@@ -98,10 +98,26 @@ class Api {
   }
 
   Future<Response> _pillarsHandler(Request request) async {
-    final data = File('${Config.refinerDataStoreDirectory}/pillar_data.json')
-        .readAsStringSync();
+    final data = jsonDecode(
+        File('${Config.refinerDataStoreDirectory}/pillar_data.json')
+            .readAsStringSync()) as Map<String, dynamic>;
+
+    final additionalData =
+        await DatabaseService().getPillarVotingActivityAndProducedMomentums();
+
+    data.forEach((k, v) {
+      if (additionalData.containsKey(k)) {
+        data[k]['votingActivity'] = additionalData[k]['votingActivity'] * 100;
+        data[k]['producedMomentumCount'] =
+            additionalData[k]['producedMomentumCount'];
+      } else {
+        data[k]['votingActivity'] = 0;
+        data[k]['producedMomentumCount'] = 0;
+      }
+    });
+
     return Response.ok(
-      data,
+      new JsonEncoder.withIndent('  ').convert(data),
       headers: headers,
     );
   }

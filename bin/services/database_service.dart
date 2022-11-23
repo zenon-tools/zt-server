@@ -135,6 +135,25 @@ class DatabaseService {
     }
   }
 
+  Future<Map<String, dynamic>>
+      getPillarVotingActivityAndProducedMomentums() async {
+    List r = await _conn
+        .query('''SELECT ownerAddress, votingActivity, producedMomentumCount
+            FROM ${Table.pillars}
+            WHERE isRevoked = false
+            ''').toList();
+    Map<String, dynamic> pillars = {};
+    if (r.isNotEmpty) {
+      for (final Row row in r) {
+        pillars[row[0]] = {
+          'votingActivity': row[1],
+          'producedMomentumCount': row[2]
+        };
+      }
+    }
+    return pillars;
+  }
+
   Future<dynamic> getAccountTokens(String address) async {
     List r = await _conn.query(
         '''SELECT T1.balance, T2.name, T2.symbol, T2.decimals, T2.tokenStandard
@@ -421,7 +440,7 @@ class DatabaseService {
 
   Future<dynamic> getPillarProfile(String pillar) async {
     List r = await _conn.query(
-        '''SELECT ownerAddress, producerAddress, withdrawAddress, spawnTimestamp, slotCostQsr, votingActivity
+        '''SELECT ownerAddress, producerAddress, withdrawAddress, spawnTimestamp, slotCostQsr, votingActivity, producedMomentumCount
             FROM ${Table.pillars}
             WHERE name = @pillar and isRevoked = false
             LIMIT 1
@@ -435,7 +454,8 @@ class DatabaseService {
         'withdrawAddress': row[2],
         'spawnTimestamp': row[3],
         'slotCostQsr': row[4],
-        'votingActivity': row[5]
+        'votingActivity': row[5],
+        'producedMomentumCount': row[6]
       };
     } else {
       return {};
@@ -778,7 +798,7 @@ class DatabaseService {
     List r = await _conn.query('''SELECT momentumTimestamp
             FROM ${Table.accountBlocks}
             WHERE tokenStandard = @tokenStandard
-            ORDER BY momentumHeight DESC LIMIT 1
+            ORDER BY momentumHeight ASC LIMIT 1
            ''', {'tokenStandard': tokenStandard}).toList();
     return r.isNotEmpty ? r[0][0] : 0;
   }
