@@ -135,10 +135,9 @@ class DatabaseService {
     }
   }
 
-  Future<Map<String, dynamic>>
-      getPillarVotingActivityAndProducedMomentums() async {
-    List r = await _conn
-        .query('''SELECT ownerAddress, votingActivity, producedMomentumCount
+  Future<Map<String, dynamic>> getPillarInfo() async {
+    List r = await _conn.query(
+        '''SELECT ownerAddress, votingActivity, producedMomentumCount, spawnTimestamp
             FROM ${Table.pillars}
             WHERE isRevoked = false
             ''').toList();
@@ -147,7 +146,8 @@ class DatabaseService {
       for (final Row row in r) {
         pillars[row[0]] = {
           'votingActivity': row[1],
-          'producedMomentumCount': row[2]
+          'producedMomentumCount': row[2],
+          'spawnTimestamp': row[3]
         };
       }
     }
@@ -420,7 +420,7 @@ class DatabaseService {
             INNER JOIN pillars T3
                 ON T3.name = @pillar
             WHERE T1.delegate = T3.ownerAddress and T2.tokenStandard = 'zts1znnxxxxxxxxxxxxx9z4ulx' and T2.balance >= 100000000
-            ORDER BY T2.balance DESC LIMIT 1000
+            ORDER BY T2.balance DESC LIMIT 10000
            ''', {'pillar': pillar}).toList();
 
     List delegators = [];
@@ -460,6 +460,19 @@ class DatabaseService {
     } else {
       return {};
     }
+  }
+
+  Future<dynamic> getPillarDelegatorCount(String pillar) async {
+    List r = await _conn.query('''SELECT COUNT(*)
+            FROM ${Table.accounts} T1
+            INNER JOIN ${Table.balances} T2
+	              ON T1.address = T2.address
+            INNER JOIN pillars T3
+                ON T3.name = @pillar
+            WHERE T1.delegate = T3.ownerAddress and T2.tokenStandard = 'zts1znnxxxxxxxxxxxxx9z4ulx' and T2.balance >= 100000000
+            LIMIT 10000
+           ''', {'pillar': pillar}).toList();
+    return r.isNotEmpty && r[0][0] != null ? r[0][0] : 0;
   }
 
   Future<dynamic> getPublicKeyByAddress(String address) async {

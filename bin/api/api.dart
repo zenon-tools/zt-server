@@ -31,6 +31,8 @@ class Api {
     'Content-Type': 'application/json'
   };
 
+  final int _genesisTimestamp = 1637755200;
+
   Router get router {
     final router = Router()
       ..get('/momentum-height', _momentumHeightHandler)
@@ -102,17 +104,25 @@ class Api {
         File('${Config.refinerDataStoreDirectory}/pillar_data.json')
             .readAsStringSync()) as Map<String, dynamic>;
 
-    final additionalData =
-        await DatabaseService().getPillarVotingActivityAndProducedMomentums();
+    final additionalData = await DatabaseService().getPillarInfo();
+    final now = (DateTime.now().millisecondsSinceEpoch / 1000).round();
 
     data.forEach((k, v) {
       if (additionalData.containsKey(k)) {
         data[k]['votingActivity'] = additionalData[k]['votingActivity'] * 100;
         data[k]['producedMomentumCount'] =
             additionalData[k]['producedMomentumCount'];
+        data[k]['dailyMomentumAvg'] = (data[k]['producedMomentumCount'] /
+                _daysInBetween(
+                    additionalData[k]['spawnTimestamp'] == 0
+                        ? _genesisTimestamp
+                        : additionalData[k]['spawnTimestamp'],
+                    now))
+            .round();
       } else {
         data[k]['votingActivity'] = 0;
         data[k]['producedMomentumCount'] = 0;
+        data[k]['dailyMomentumAvg'] = 0;
       }
     });
 
@@ -292,6 +302,18 @@ class Api {
     }
 
     final profile = await DatabaseService().getPillarProfile(pillar);
+    profile['delegatorCount'] =
+        await DatabaseService().getPillarDelegatorCount(pillar);
+
+    final now = (DateTime.now().millisecondsSinceEpoch / 1000).round();
+    profile['dailyMomentumAvg'] = (profile['producedMomentumCount'] /
+            _daysInBetween(
+                profile['spawnTimestamp'] == 0
+                    ? _genesisTimestamp
+                    : profile['spawnTimestamp'],
+                now))
+        .round();
+
     return Response.ok(
       Utils.toJson(profile),
       headers: headers,
@@ -821,4 +843,8 @@ String _createRewardTransactionsCsv(List rewards, dynamic marketHistory,
   csv += '\n\nPrice information provided by CoinGecko.';
 
   return csv;
+}
+
+int _daysInBetween(int start, int end) {
+  return ((end - start) / (24 * 60 * 60)).round();
 }
