@@ -208,7 +208,7 @@ class DatabaseService {
   Future<dynamic> getVotesByPillar(
       String pillar, int page, String searchText) async {
     List r = await _conn.query(
-        '''SELECT T1.momentumHash, T1.momentumTimestamp, T2.url, T2.name, T3.name, T1.vote, T1.projectId
+        '''SELECT T1.momentumHash, T1.momentumTimestamp, T2.url, T2.name, T3.name, T1.vote, T1.projectId, T1.votingId
             FROM ${Table.votes} T1
             LEFT JOIN ${Table.projects} T2
                 ON T2.id = T1.projectId
@@ -224,7 +224,7 @@ class DatabaseService {
     List votes = [];
     if (r.isNotEmpty) {
       for (final Row row in r) {
-        if (row.toList().length == 7 && row[3] != null) {
+        if (row.toList().length == 8 && row[3] != null) {
           votes.add({
             'momentumHash': row[0],
             'momentumTimestamp': row[1],
@@ -233,11 +233,26 @@ class DatabaseService {
             'phaseName': row[4] ?? '',
             'vote': row[5],
             'projectId': row[6],
+            'votingId': row[7],
           });
         }
       }
     }
     return votes;
+  }
+
+  Future<dynamic> getPillarVoteCount(String pillar, String searchText) async {
+    List r = await _conn.query('''SELECT COUNT(*)
+            FROM ${Table.votes} T1
+            LEFT JOIN ${Table.projects} T2
+                ON T2.id = T1.projectId
+            LEFT JOIN ${Table.projectPhases} T3
+                ON T3.id = T1.phaseId
+            INNER JOIN ${Table.pillars} T4
+	              ON T4.name = @pillar
+            WHERE voterAddress = T4.ownerAddress and (T2.name ILIKE @search or T3.name ILIKE @search)''',
+        {'pillar': pillar, 'search': '%$searchText%'}).toList();
+    return r.isNotEmpty && r[0][0] != null ? r[0][0] : 0;
   }
 
   Future<dynamic> getAzProjects(int page, String searchText) async {

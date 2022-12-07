@@ -39,9 +39,10 @@ class Api {
       ..get('/nom-data', _nomDataHandler)
       ..get('/pcs-pool', _pcsPoolHandler)
       ..get('/pillars', _pillarsHandler)
+      ..get('/pillars/<pillar>/votes', _votesHandler)
       ..get('/pillars-off-chain', _pillarsOffChainHandler)
       ..get('/portfolio', _portfolioHandler)
-      ..get('/votes', _votesHandler)
+      ..get('/votes', _votesHandlerDeprecated)
       ..get('/projects', _projectsHandler)
       ..get('/project', _projectHandler)
       ..get('/project-votes', _projectVotesHandler)
@@ -170,7 +171,7 @@ class Api {
     );
   }
 
-  Future<Response> _votesHandler(Request request) async {
+  Future<Response> _votesHandlerDeprecated(Request request) async {
     final pillar = request.url.queryParameters['pillar'] ?? '';
     final page = int.parse(request.url.queryParameters['page'] ?? '1');
     final searchText = request.url.queryParameters['search'] ?? '';
@@ -188,6 +189,29 @@ class Api {
 
     return Response.ok(
       Utils.toJson(votes),
+      headers: headers,
+    );
+  }
+
+  Future<Response> _votesHandler(Request request) async {
+    final pillar = request.params['pillar'] ?? '';
+    final page = int.parse(request.url.queryParameters['page'] ?? '1');
+    final searchText = request.url.queryParameters['search'] ?? '';
+
+    if (pillar.length == 0 ||
+        pillar.length > 30 ||
+        page <= 0 ||
+        page > 100 ||
+        searchText.length > 50) {
+      return Response.internalServerError();
+    }
+
+    final votes =
+        await DatabaseService().getVotesByPillar(pillar, page, searchText);
+    final totalCount =
+        await DatabaseService().getPillarVoteCount(pillar, searchText);
+    return Response.ok(
+      Utils.toJson({'count': totalCount, 'page': page, 'list': votes}),
       headers: headers,
     );
   }
