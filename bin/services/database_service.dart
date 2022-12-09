@@ -100,7 +100,7 @@ class DatabaseService {
     List r = await _conn
         .query('''SELECT T1.registrationTimestamp, T1.isRevocable, T1.active
             FROM ${Table.sentinels} T1
-            WHERE T1.owner = @address
+            WHERE T1.owner = @address and T1.active = true
             LIMIT 1''', {'address': address}).toList();
     if (r.isNotEmpty && (r[0] as Row).toList().length == 3) {
       final row = r[0];
