@@ -110,16 +110,17 @@ class Api {
 
     data.forEach((k, v) {
       if (additionalData.containsKey(k)) {
+        final daysInBetween = _daysInBetween(
+            additionalData[k]['spawnTimestamp'] == 0
+                ? _genesisTimestamp
+                : additionalData[k]['spawnTimestamp'],
+            now);
         data[k]['votingActivity'] = additionalData[k]['votingActivity'] * 100;
         data[k]['producedMomentumCount'] =
             additionalData[k]['producedMomentumCount'];
-        data[k]['dailyMomentumAvg'] = (data[k]['producedMomentumCount'] /
-                _daysInBetween(
-                    additionalData[k]['spawnTimestamp'] == 0
-                        ? _genesisTimestamp
-                        : additionalData[k]['spawnTimestamp'],
-                    now))
-            .round();
+        data[k]['dailyMomentumAvg'] = daysInBetween == 0
+            ? 0
+            : (data[k]['producedMomentumCount'] / daysInBetween).round();
       } else {
         data[k]['votingActivity'] = 0;
         data[k]['producedMomentumCount'] = 0;
@@ -330,13 +331,14 @@ class Api {
         await DatabaseService().getPillarDelegatorCount(pillar);
 
     final now = (DateTime.now().millisecondsSinceEpoch / 1000).round();
-    profile['dailyMomentumAvg'] = (profile['producedMomentumCount'] /
-            _daysInBetween(
-                profile['spawnTimestamp'] == 0
-                    ? _genesisTimestamp
-                    : profile['spawnTimestamp'],
-                now))
-        .round();
+    final daysInBetween = _daysInBetween(
+        profile['spawnTimestamp'] == 0
+            ? _genesisTimestamp
+            : profile['spawnTimestamp'],
+        now);
+    profile['dailyMomentumAvg'] = daysInBetween == 0
+        ? 0
+        : (profile['producedMomentumCount'] / daysInBetween).round();
 
     return Response.ok(
       Utils.toJson(profile),
