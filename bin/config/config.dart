@@ -13,6 +13,7 @@ class Config {
 
   static String _refinerDataStoreDirectory = '';
   static String _pillarsOffChainInfoDirectory = '';
+  static String _statisticsDirectory = '';
 
   static String _donationAddressZnn = '';
 
@@ -48,6 +49,10 @@ class Config {
     return _pillarsOffChainInfoDirectory;
   }
 
+  static String get statisticsDirectory {
+    return _statisticsDirectory;
+  }
+
   static String get donationAddressZnn {
     return _donationAddressZnn;
   }
@@ -68,6 +73,8 @@ class Config {
         settings['refiner_data_store_directory'] as String;
     _pillarsOffChainInfoDirectory =
         settings['pillars_off_chain_info_directory'] as String;
+    _statisticsDirectory =
+        settings['statistics_data_store_directory'] as String;
 
     _donationAddressZnn = settings['donation_address_znn'] as String;
   }

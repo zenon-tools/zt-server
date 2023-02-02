@@ -8,5 +8,6 @@ database_password: ''
 
 refiner_data_store_directory: ''
 pillars_off_chain_data_directory: ''
+statistics_data_store_directory: ''
 
 donation_address_znn: ''

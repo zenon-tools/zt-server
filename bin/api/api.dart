@@ -104,11 +104,22 @@ class Api {
     final data = jsonDecode(
         File('${Config.refinerDataStoreDirectory}/pillar_data.json')
             .readAsStringSync()) as Map<String, dynamic>;
+    final statistics30d = jsonDecode(
+        File('${Config.statisticsDirectory}/pillars/statistics/30d.json')
+            .readAsStringSync()) as Map<String, dynamic>;
 
     final additionalData = await DatabaseService().getPillarInfo();
     final now = (DateTime.now().millisecondsSinceEpoch / 1000).round();
 
     data.forEach((k, v) {
+      if (statistics30d.containsKey(k)) {
+        data[k]['uptime30d'] = statistics30d[k]['uptime'] * 100;
+        data[k]['delegateApr30d'] = statistics30d[k]['avgDelegateApr'];
+      } else {
+        data[k]['uptime30d'] = 0;
+        data[k]['delegateApr30d'] = 0;
+      }
+
       if (additionalData.containsKey(k)) {
         final daysInBetween = _daysInBetween(
             additionalData[k]['spawnTimestamp'] == 0
