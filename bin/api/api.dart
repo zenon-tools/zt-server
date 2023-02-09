@@ -232,7 +232,7 @@ class Api {
     final page = int.parse(request.url.queryParameters['page'] ?? '1');
     final searchText = request.url.queryParameters['search'] ?? '';
 
-    if (page <= 0 || page > 100 || searchText.length > 50) {
+    if (page <= 0 || page > 100 || searchText.length > 100) {
       return Response.internalServerError();
     }
 
