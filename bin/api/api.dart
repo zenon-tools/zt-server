@@ -37,7 +37,7 @@ class Api {
     final router = Router()
       ..get('/momentum-height', _momentumHeightHandler)
       ..get('/nom-data', _nomDataHandler)
-      ..get('/pcs-pool', _pcsPoolHandler)
+      ..get('/znn-eth-pool', _znnEthPoolHandler)
       ..get('/pillars', _pillarsHandler)
       ..get('/pillars/<pillar>/votes', _votesHandler)
       ..get('/pillars-off-chain', _pillarsOffChainHandler)
@@ -91,9 +91,10 @@ class Api {
     );
   }
 
-  Future<Response> _pcsPoolHandler(Request request) async {
-    final data = File('${Config.refinerDataStoreDirectory}/pcs_pool_data.json')
-        .readAsStringSync();
+  Future<Response> _znnEthPoolHandler(Request request) async {
+    final data =
+        File('${Config.refinerDataStoreDirectory}/znn_eth_pool_data.json')
+            .readAsStringSync();
     return Response.ok(
       data,
       headers: headers,
